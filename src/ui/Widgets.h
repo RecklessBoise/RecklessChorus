@@ -135,3 +135,22 @@ public:
 private:
     bool right;
 };
+
+//==============================================================================
+/** "Save" icon button (arrow into a tray). */
+class SaveButton final : public juce::Component
+{
+public:
+    SaveButton() { setMouseCursor (juce::MouseCursor::PointingHandCursor); }
+
+    void paint (juce::Graphics&) override;
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        if (contains (e.getPosition()) && onClick != nullptr)
+            onClick();
+    }
+    void mouseEnter (const juce::MouseEvent&) override { repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { repaint(); }
+
+    std::function<void()> onClick;
+};

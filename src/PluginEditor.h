@@ -2,6 +2,7 @@
 
 #include "PluginProcessor.h"
 #include "ui/GraphPanels.h"
+#include "ui/PresetDialog.h"
 #include "ui/RecklessLookAndFeel.h"
 #include "ui/VoiceVisualizer.h"
 #include "ui/Widgets.h"
@@ -33,6 +34,9 @@ public:
 
 private:
     void showPresetMenu();
+    void showSaveDialog();
+    void confirmDeletePreset();
+    void showMessage (const juce::String& name, const juce::String& text);
     void showSizeMenu();
     void selectTab (bool analogSettings);
     void setStatus (const juce::String& paramId);
@@ -44,6 +48,7 @@ private:
     // Header
     ArrowButton prevPreset { false }, nextPreset { true };
     FlatButton presetName { "Default", 14.0f };
+    SaveButton savePreset;
     FlatButton abButton { "A", 12.5f };
     Knob mix;
     Fader output;
@@ -66,6 +71,9 @@ private:
     // Status bar
     FlatButton sizeButton { "100%", 11.5f };
     juce::String statusName, statusText;
+    juce::uint32 messageUntil = 0;
+
+    PresetDialog dialog;
 
     bool showingAnalogSettings = true;
     bool lastDigital = false;

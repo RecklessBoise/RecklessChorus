@@ -30,6 +30,15 @@ Chorus VST3 / AU à deux moteurs — un modèle analogique de ligne à retard BB
 
 **Presets d'usine** : Default, Juno Mode I/II, Dimension Wash, Thick Ensemble, Vocal Shimmer, Lo-Fi Crunch, Vintage Pedal, Rotary-ish, Broken BBD, Slow Pad Drift.
 
+**Presets utilisateur**
+- Bouton d'enregistrement (icône flèche) à côté du nom du preset, ou *Save preset...* dans le menu des presets. Un nom déjà utilisé propose d'écraser le preset existant.
+- Le menu des presets sépare **Factory** et **User** ; il permet aussi de supprimer le preset utilisateur courant (envoyé à la corbeille) et d'ouvrir le dossier des presets.
+- Les flèches ◀ ▶ parcourent les presets d'usine puis les presets utilisateur. Un astérisque (*) signale un preset modifié.
+- Fichiers `.rcpreset` (XML lisible, partageables) dans :
+  - macOS : `~/Library/Application Support/RecklessBoise/RecklessChorus/Presets/`
+  - Windows : `%APPDATA%\RecklessBoise\RecklessChorus\Presets\`
+- La session du DAW mémorise le preset actif, y compris un preset utilisateur.
+
 ## Téléchargement
 
 Les binaires (macOS universel VST3 + AU, Windows VST3) sont publiés dans les [Releases](../../releases) à chaque tag `v*`.
@@ -69,6 +78,7 @@ src/
     ChorusCore.*      chaîne complète des deux moteurs, 8 voix
   Parameters.*    Paramètres APVTS, textes d'aide, lecture temps réel sans verrou
   Presets.*       Presets d'usine
+  PresetManager.*  Presets usine + utilisateur (.rcpreset), navigation, état de session
   PluginProcessor.*  Processeur JUCE : bus, état, A/B, presets
   PluginEditor.*  Éditeur : vue de taille fixe 760×670 mise à l'échelle par transformation affine
   ui/             LookAndFeel, potards, champs de valeur, visualiseur de voix, graphes
@@ -88,6 +98,7 @@ entrée → Low/High Cut → [Analog : pré-emphasis → compresseur → filtre 
 ## Validation
 
 - Tests unitaires : mix à 0 transparent au bit près, stabilité aux réglages extrêmes, silence sans souffle, décorrélation stéréo, mono, déterminisme.
+- Tests des presets (avec JUCE) : sauvegarde/rechargement de tous les paramètres, noms invalides, écrasement, ordre et navigation, fichier corrompu, suppression, indicateur de modification, restauration de session.
 - [pluginval](https://github.com/Tracktion/pluginval) en strictesse 10, en local et en CI.
 
 ## Licence

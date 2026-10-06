@@ -297,3 +297,27 @@ void ArrowButton::paint (juce::Graphics& g)
     g.setColour (isMouseOver() ? Palette::text : Palette::textDim);
     g.fillPath (p);
 }
+
+//==============================================================================
+void SaveButton::paint (juce::Graphics& g)
+{
+    const auto b = getLocalBounds().toFloat().withSizeKeepingCentre (14.0f, 14.0f);
+    g.setColour (isMouseOver() ? accentOf (*this) : Palette::textDim);
+
+    juce::Path tray;
+    tray.startNewSubPath (b.getX(), b.getY() + b.getHeight() * 0.6f);
+    tray.lineTo (b.getX(), b.getBottom());
+    tray.lineTo (b.getRight(), b.getBottom());
+    tray.lineTo (b.getRight(), b.getY() + b.getHeight() * 0.6f);
+
+    juce::Path arrow;
+    arrow.startNewSubPath (b.getCentreX(), b.getY());
+    arrow.lineTo (b.getCentreX(), b.getY() + b.getHeight() * 0.7f);
+    arrow.startNewSubPath (b.getCentreX() - 4.0f, b.getY() + b.getHeight() * 0.7f - 4.0f);
+    arrow.lineTo (b.getCentreX(), b.getY() + b.getHeight() * 0.7f);
+    arrow.lineTo (b.getCentreX() + 4.0f, b.getY() + b.getHeight() * 0.7f - 4.0f);
+
+    const juce::PathStrokeType stroke (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+    g.strokePath (tray, stroke);
+    g.strokePath (arrow, stroke);
+}

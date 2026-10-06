@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "Parameters.h"
+#include "PresetManager.h"
 #include "dsp/ChorusCore.h"
 
 class RecklessChorusProcessor final : public juce::AudioProcessor,
@@ -32,7 +33,7 @@ public:
 
     //==============================================================================
     int getNumPrograms() override;
-    int getCurrentProgram() override { return currentPreset; }
+    int getCurrentProgram() override { return juce::jmax (0, presets.getCurrentFactoryIndex()); }
     void setCurrentProgram (int index) override;
     const juce::String getProgramName (int index) override;
     void changeProgramName (int, const juce::String&) override {}
@@ -44,7 +45,7 @@ public:
     juce::AudioProcessorValueTreeState& getState() noexcept { return state; }
     float getLfoPhase() const noexcept { return core.getLfoPhase(); }
 
-    bool isPresetModified() const noexcept { return presetModified.load(); }
+    PresetManager& getPresets() noexcept { return presets; }
 
     /** A/B comparison: swaps the live settings with the other slot. */
     void toggleAB();
@@ -58,15 +59,12 @@ public:
 
 private:
     void parameterChanged (const juce::String& parameterID, float newValue) override;
-    void applyPreset (int index);
 
     juce::AudioProcessorValueTreeState state;
     Parameters::Snapshot snapshot;
     reckless::ChorusCore core;
 
-    int currentPreset = 0;
-    std::atomic<bool> presetModified { false };
-    std::atomic<bool> applyingPreset { false };
+    PresetManager presets;
 
     std::array<juce::ValueTree, 2> abSlots;
     int activeSlot = 0;

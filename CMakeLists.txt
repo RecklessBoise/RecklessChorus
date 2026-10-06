@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 
-project(RecklessChorus VERSION 0.1.0 LANGUAGES C CXX)
+project(RecklessChorus VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -52,10 +52,12 @@ set(RECKLESS_PLUGIN_SOURCES
     src/PluginEditor.cpp
     src/Parameters.cpp
     src/Presets.cpp
+    src/PresetManager.cpp
     src/ui/RecklessLookAndFeel.cpp
     src/ui/Widgets.cpp
     src/ui/VoiceVisualizer.cpp
-    src/ui/GraphPanels.cpp)
+    src/ui/GraphPanels.cpp
+    src/ui/PresetDialog.cpp)
 target_sources(RecklessChorus PRIVATE ${RECKLESS_PLUGIN_SOURCES})
 
 target_compile_definitions(RecklessChorus PUBLIC
@@ -88,8 +90,20 @@ if(RECKLESS_BUILD_TESTS)
     add_executable(RecklessTests tests/ChorusCoreTests.cpp)
     target_link_libraries(RecklessTests PRIVATE reckless_dsp Catch2::Catch2WithMain)
 
+    # Plug-in level tests (presets, state) — compiles the plug-in sources against JUCE.
+    juce_add_console_app(RecklessPluginTests PRODUCT_NAME "RecklessPluginTests")
+    target_sources(RecklessPluginTests PRIVATE tests/PresetManagerTests.cpp ${RECKLESS_PLUGIN_SOURCES})
+    target_include_directories(RecklessPluginTests PRIVATE src)
+    target_compile_definitions(RecklessPluginTests PRIVATE
+        JucePlugin_Name="RecklessChorus"
+        JucePlugin_VersionString="${PROJECT_VERSION}"
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(RecklessPluginTests PRIVATE
+        reckless_dsp Catch2::Catch2WithMain juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
+
     include(${catch2_SOURCE_DIR}/extras/Catch.cmake)
     catch_discover_tests(RecklessTests)
+    catch_discover_tests(RecklessPluginTests)
 endif()
 
 # ---------------------------------------------------------------------------

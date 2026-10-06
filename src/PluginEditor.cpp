@@ -37,7 +37,7 @@ MainView::MainView (RecklessChorusProcessor& p, RecklessLookAndFeel& l)
     setOpaque (true);
 
     for (auto* c : std::initializer_list<juce::Component*> {
-             &prevPreset, &nextPreset, &presetName, &abButton, &mix, &output, &visualizer, &engine,
+             &prevPreset, &nextPreset, &presetName, &savePreset, &abButton, &mix, &output, &visualizer, &engine,
              &speed, &depth, &quality, &edge, &voices, &inputTab, &analogTab, &shape, &wide,
              &inputPanel, &aliasingPanel, &stabilityPanel, &companderPanel, &sizeButton })
         addAndMakeVisible (c);
@@ -45,13 +45,18 @@ MainView::MainView (RecklessChorusProcessor& p, RecklessLookAndFeel& l)
     // Presets
     const auto step = [this] (int delta)
     {
-        const auto n = processor.getNumPrograms();
-        processor.setCurrentProgram ((processor.getCurrentProgram() + delta + n) % n);
+        if (const auto result = processor.getPresets().step (delta); result.failed())
+            showMessage ("Preset", result.getErrorMessage());
     };
     prevPreset.onClick = [step] { step (-1); };
     nextPreset.onClick = [step] { step (1); };
     presetName.onClick = [this] { showPresetMenu(); };
     presetName.setComponentID ("preset");
+    savePreset.onClick = [this] { showSaveDialog(); };
+    savePreset.setComponentID ("save");
+
+    // Topmost: the modal overlay covers everything when shown.
+    addChildComponent (dialog);
 
     abButton.boxed = true;
     abButton.setComponentID ("ab");
@@ -146,9 +151,10 @@ void MainView::paint (juce::Graphics& g)
 void MainView::resized()
 {
     // Header
-    prevPreset.setBounds (262, 17, 18, 20);
-    nextPreset.setBounds (282, 17, 18, 20);
-    presetName.setBounds (310, 12, 180, 30);
+    prevPreset.setBounds (250, 17, 18, 20);
+    nextPreset.setBounds (270, 17, 18, 20);
+    presetName.setBounds (296, 12, 172, 30);
+    savePreset.setBounds (470, 15, 26, 24);
     abButton.setBounds (506, 15, 30, 24);
     mix.setBounds (556, 4, 46, 46);
     output.setBounds (618, 15, 124, 24);
@@ -177,12 +183,19 @@ void MainView::resized()
     inputPanel.setBounds (0, kPanelsY, getWidth(), panelHeight);
 
     sizeButton.setBounds (getWidth() - 30 - 52 - 62, kStatusY + 8, 52, 22);
+
+    dialog.setBounds (getLocalBounds());
 }
 
 //==============================================================================
 void MainView::setStatus (const juce::String& id)
 {
-    if (id == "preset")       { statusName = "Preset"; statusText = "Browse the factory presets"; }
+    // Keep a fresh "saved / deleted" message visible briefly when the pointer leaves a control.
+    if (id.isEmpty() && juce::Time::getMillisecondCounter() < messageUntil)
+        return;
+
+    if (id == "preset")       { statusName = "Preset"; statusText = "Browse factory and user presets, save, delete or open the presets folder"; }
+    else if (id == "save")    { statusName = "Save";   statusText = "Save the current settings as a user preset"; }
     else if (id == "ab")      { statusName = "A/B";    statusText = "Compare two settings: switch between slot A and slot B"; }
     else if (id == "size")    { statusName = "Size";   statusText = "Interface size - you can also drag the bottom-right corner"; }
     else if (const auto info = Parameters::infoFor (id); info.name.isNotEmpty())
@@ -218,17 +231,92 @@ void MainView::mouseExit (const juce::MouseEvent&)
 //==============================================================================
 void MainView::showPresetMenu()
 {
-    juce::PopupMenu menu;
-    const auto& presets = factoryPresets();
-    for (int i = 0; i < (int) presets.size(); ++i)
-        menu.addItem (i + 1, presets[(std::size_t) i].name, true, i == processor.getCurrentProgram());
+    auto& presets = processor.getPresets();
+    const auto safe = juce::Component::SafePointer<MainView> (this);
+    const auto currentFactory = presets.getCurrentFactoryIndex();
+    const auto currentName = presets.getCurrentName();
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&presetName),
-                        [safe = juce::Component::SafePointer<MainView> (this)] (int result)
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("Factory");
+    for (const auto& entry : presets.getEntries())
+    {
+        if (! entry.isFactory())
+            continue;
+        menu.addItem (entry.name, true, entry.factoryIndex == currentFactory, [safe, entry]
+        {
+            if (safe != nullptr)
+                safe->processor.setCurrentProgram (entry.factoryIndex);
+        });
+    }
+
+    menu.addSectionHeader ("User");
+    const auto userEntries = presets.getUserEntries();
+    if (userEntries.empty())
+        menu.addItem ("(no user presets yet)", false, false, nullptr);
+
+    for (const auto& entry : userEntries)
+        menu.addItem (entry.name, true, currentFactory < 0 && entry.name == currentName, [safe, entry]
+        {
+            if (safe != nullptr)
+                if (const auto result = safe->processor.getPresets().load (entry); result.failed())
+                    safe->showMessage ("Preset", result.getErrorMessage());
+        });
+
+    menu.addSeparator();
+    menu.addItem ("Save preset...", [safe] { if (safe != nullptr) safe->showSaveDialog(); });
+    menu.addItem ("Delete \"" + currentName + "\"", presets.isCurrentUserPreset(), false,
+                  [safe] { if (safe != nullptr) safe->confirmDeletePreset(); });
+    menu.addItem ("Open presets folder", [safe]
+    {
+        if (safe == nullptr)
+            return;
+        const auto dir = safe->processor.getPresets().getUserDirectory();
+        dir.createDirectory();
+        dir.startAsProcess();
+    });
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&presetName));
+}
+
+void MainView::showSaveDialog()
+{
+    auto& presets = processor.getPresets();
+    const auto suggested = presets.isCurrentUserPreset() ? presets.getCurrentName() : juce::String ("My Preset");
+
+    dialog.showSave (suggested,
+                     [this] (const juce::String& name) { return processor.getPresets().userPresetExists (name); },
+                     [this] (const juce::String& name) -> juce::String
+                     {
+                         const auto result = processor.getPresets().save (name);
+                         if (result.failed())
+                             return result.getErrorMessage();
+
+                         showMessage ("Preset", "Saved \"" + processor.getPresets().getCurrentName() + "\"");
+                         return {};
+                     });
+}
+
+void MainView::confirmDeletePreset()
+{
+    const auto name = processor.getPresets().getCurrentName();
+    dialog.showConfirm ("Delete preset",
+                        "Move \"" + name + "\" to the trash?",
+                        "Delete",
+                        [this, name]
                         {
-                            if (safe != nullptr && result > 0)
-                                safe->processor.setCurrentProgram (result - 1);
+                            if (const auto result = processor.getPresets().deleteCurrentUserPreset(); result.failed())
+                                showMessage ("Preset", result.getErrorMessage());
+                            else
+                                showMessage ("Preset", "Deleted \"" + name + "\"");
                         });
+}
+
+void MainView::showMessage (const juce::String& name, const juce::String& text)
+{
+    messageUntil = juce::Time::getMillisecondCounter() + 3000;
+    statusName = name;
+    statusText = text;
+    repaint (0, kStatusY, getWidth(), getHeight() - kStatusY);
 }
 
 void MainView::showSizeMenu()
@@ -271,8 +359,8 @@ void MainView::tick (double elapsedSeconds, bool refreshPanels)
             if (panel->isVisible())
                 panel->refresh (params);
 
-        const auto name = processor.getProgramName (processor.getCurrentProgram())
-                        + (processor.isPresetModified() ? " *" : "");
+        const auto& presets = processor.getPresets();
+        const auto name = presets.getCurrentName() + (presets.isModified() ? " *" : "");
         presetName.setText (name);
         abButton.setText (processor.getActiveSlot() == 0 ? "A" : "B");
         abButton.setSelected (processor.getActiveSlot() == 1);

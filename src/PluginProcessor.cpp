@@ -5,9 +5,7 @@
 namespace
 {
     const juce::Identifier kStateType   { "RecklessChorus" };
-    const juce::Identifier kPresetProp  { "preset" };
     const juce::Identifier kWidthProp   { "editorWidth" };
-    const juce::Identifier kModifiedProp { "presetModified" };
 }
 
 RecklessChorusProcessor::RecklessChorusProcessor()
@@ -15,7 +13,8 @@ RecklessChorusProcessor::RecklessChorusProcessor()
                           .withInput ("Input", juce::AudioChannelSet::stereo(), true)
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       state (*this, nullptr, kStateType, Parameters::createLayout()),
-      snapshot (state)
+      snapshot (state),
+      presets (state)
 {
     for (const auto& id : ParamIDs::all())
         state.addParameterListener (id, this);
@@ -87,7 +86,10 @@ int RecklessChorusProcessor::getNumPrograms()
 void RecklessChorusProcessor::setCurrentProgram (int index)
 {
     if (juce::isPositiveAndBelow (index, getNumPrograms()))
-        applyPreset (index);
+    {
+        presets.loadFactory (index);
+        updateHostDisplay (ChangeDetails().withProgramChanged (true));
+    }
 }
 
 const juce::String RecklessChorusProcessor::getProgramName (int index)
@@ -97,36 +99,9 @@ const juce::String RecklessChorusProcessor::getProgramName (int index)
     return {};
 }
 
-void RecklessChorusProcessor::applyPreset (int index)
-{
-    const auto& preset = factoryPresets()[(std::size_t) index];
-
-    applyingPreset = true;
-    for (const auto& id : ParamIDs::all())
-    {
-        auto* param = dynamic_cast<juce::RangedAudioParameter*> (state.getParameter (id));
-        jassert (param != nullptr);
-
-        auto normalised = param->getDefaultValue();
-        for (const auto& [presetId, value] : preset.values)
-            if (id == presetId)
-                normalised = param->convertTo0to1 (value);
-
-        param->beginChangeGesture();
-        param->setValueNotifyingHost (normalised);
-        param->endChangeGesture();
-    }
-    applyingPreset = false;
-
-    currentPreset = index;
-    presetModified = false;
-    updateHostDisplay (ChangeDetails().withProgramChanged (true));
-}
-
 void RecklessChorusProcessor::parameterChanged (const juce::String&, float)
 {
-    if (! applyingPreset)
-        presetModified = true;
+    presets.markModified();
 }
 
 void RecklessChorusProcessor::toggleAB()
@@ -142,9 +117,8 @@ void RecklessChorusProcessor::toggleAB()
 void RecklessChorusProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto tree = state.copyState();
-    tree.setProperty (kPresetProp, currentPreset, nullptr);
     tree.setProperty (kWidthProp, editorWidth, nullptr);
-    tree.setProperty (kModifiedProp, presetModified.load(), nullptr);
+    presets.writeTo (tree);
 
     if (const auto xml = tree.createXml())
         copyXmlToBinary (*xml, destData);
@@ -157,13 +131,13 @@ void RecklessChorusProcessor::setStateInformation (const void* data, int sizeInB
         return;
 
     auto tree = juce::ValueTree::fromXml (*xml);
-    currentPreset = juce::jlimit (0, getNumPrograms() - 1, static_cast<int> (tree.getProperty (kPresetProp, 0)));
     editorWidth = static_cast<int> (tree.getProperty (kWidthProp, kDefaultEditorWidth));
 
-    applyingPreset = true;
-    state.replaceState (tree);
-    applyingPreset = false;
-    presetModified = static_cast<bool> (tree.getProperty (kModifiedProp, false));
+    {
+        const PresetManager::ScopedApply scope (presets);
+        state.replaceState (tree);
+    }
+    presets.readFrom (tree);
 }
 
 //==============================================================================

@@ -1,5 +1,5 @@
 // Renders the editor offscreen to a PNG (used for the README screenshot).
-// Usage: RecklessScreenshot <output.png> [scale] [preset index]
+// Usage: RecklessScreenshot <output.png> [scale] [preset index] [save]
 
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
@@ -30,8 +30,15 @@ int main (int argc, char* argv[])
 
     std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
     if (auto* view = dynamic_cast<MainView*> (editor->getChildComponent (0)))
+    {
         for (int i = 0; i < 30; ++i)
             view->tick (1.0 / 60.0, true);
+
+        // Optional 4th argument "save": show the save-preset dialog.
+        if (argc > 4 && juce::String (argv[4]) == "save")
+            if (auto* save = dynamic_cast<SaveButton*> (view->findChildWithID ("save")); save != nullptr && save->onClick)
+                save->onClick();
+    }
 
     const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 2.0f);
     juce::File output (juce::File::getCurrentWorkingDirectory().getChildFile (argv[1]));
